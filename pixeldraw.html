@@ -1,0 +1,997 @@
+<html>
+
+<head>
+    <style>
+        html {
+            -ms-text-size-adjust: 100%;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #FFFFFF;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        .mask {
+            position: absolute;
+            z-index: 4000;
+            background-color: #000000AA;
+            display: none;
+        }
+        
+        .white_content {
+            display: none;
+            width: auto;
+            height: auto;
+            padding: 10px;
+            border: 3px solid #42b6bc;
+            background-color: white;
+            z-index: 1002;
+            overflow: auto;
+            overflow-y: visible;
+        }
+        
+        #Box {
+            margin: 0px;
+            border: 2px ridge #42b6bc;
+            z-index: 3000;
+        }
+        
+        #export-wrap {
+            display: block;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        #SubmitFloatWindow {
+            display: none;
+            width: auto;
+            height: auto;
+            padding: 10px;
+            border: 3px solid #42b6bc;
+            background-color: lightgrey;
+            z-index: 1002;
+            overflow: auto;
+            overflow-y: visible;
+        }
+    </style>
+
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.monolith.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.nano.min.css" />
+
+    <script src="http://cdn.jsdelivr.net/gh/icon-project/icon-sdk-js@latest/build/icon-sdk-js.web.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.es5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bPopup/0.11.0/jquery.bpopup.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.lazyload/1.9.1/jquery.lazyload.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.15.0/popper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tippy.js/3.4.1/tippy.min.js"></script>
+    <script src="PNGlib.js"></script>
+</head>
+
+<body>
+    <script>
+        const IconService = window['icon-sdk-js'];
+        const TestNet = 'https://bicon.net.solidwallet.io/api/v3';
+        const MainNet = 'https://ctz.solidwallet.io/api/v3';
+        const provider = new IconService.HttpProvider(TestNet);
+        const iconService = new IconService(provider);
+        const IconConverter = IconService.IconConverter;
+        const IconBuilder = IconService.IconBuilder;
+
+        window.addEventListener("ICONEX_RELAY_RESPONSE", eventHandler, false);
+
+        function eventHandler(event) {
+            const type = event.detail.type
+            const payload = event.detail.payload
+            switch (type) {
+                case "RESPONSE_ADDRESS":
+                    fromAddress = payload
+                    localStorage.setItem('ICON_ADDRESS', payload);
+                    break
+                case "RESPONSE_JSON-RPC":
+                    console.log(JSON.stringify(payload));
+
+                    setTimeout(function() {
+                        $.ajax("./remakeimg?id=" + CurrentIndex).done(function(res) {
+                            $('#totalImg').attr('src', 'output.png?' + new Date().getTime());
+                            console.log("success");
+                            console.log(res);
+                        }).fail(function(err) {
+                            $('#totalImg').attr('src', 'output.png?' + new Date().getTime());
+                            console.log("fail");
+                            console.log(err);
+                        });
+                    }, 10000);
+                    break
+                default:
+            }
+        }
+
+        function ConnectICONEX() {
+            window.dispatchEvent(new CustomEvent('ICONEX_RELAY_REQUEST', {
+                detail: {
+                    type: 'REQUEST_ADDRESS'
+                }
+            }));
+        }
+
+        const TestContractAddress = "cx7588f0968ac458ed765fdb2a0f21c69820e61467";
+        const ContractAddress = "";
+
+        async function GetPrice(index) {
+            // icon에서 받아오기
+            var callBuilder = new IconBuilder.CallBuilder()
+            var callObj = callBuilder
+                .to(TestContractAddress)
+                .method('get_price')
+                .params({
+                    "index": String(index)
+                })
+                .build();
+
+            var result = await iconService.call(callObj).execute();
+            return result;
+        }
+
+        function BidBlock(amount, index, pixelData) {
+            if (!this.fromAddress) {
+                ConnectICONEX();
+                return;
+            }
+
+            const callTransactionBuilder = new IconBuilder.CallTransactionBuilder;
+            const callTransactionData = callTransactionBuilder
+                .from(this.fromAddress)
+                .value("0x0")
+                .to(TestContractAddress)
+                .nid(IconConverter.toBigNumber("3"))
+                .timestamp((new Date()).getTime() * 1000)
+                .stepLimit(IconConverter.toBigNumber("10000000"))
+                .version(IconConverter.toBigNumber("3"))
+                .method('set_pixels')
+                .params({
+                    'amount': String(amount),
+                    'index': String(index),
+                    'draw': pixelData
+                })
+                .build();
+
+            const scoreData = JSON.stringify({
+                "jsonrpc": "2.0",
+                "method": "icx_sendTransaction",
+                "params": IconConverter.toRawTransaction(callTransactionData),
+                "id": 44
+            });
+
+            const parsed = JSON.parse(scoreData);
+            window.dispatchEvent(new CustomEvent('ICONEX_RELAY_REQUEST', {
+                detail: {
+                    type: 'REQUEST_JSON-RPC',
+                    payload: parsed
+                }
+            }));
+            $('#SubmitFloatWindow').bPopup().close();
+        }
+
+        async function GetBlock(index) {
+            // 아이콘에서 받아오라고 서버에 요청함
+            // 서버에서는 받아와서 이미지 만들어 놓고 새로고침 시킴
+            var callBuilder = new IconBuilder.CallBuilder()
+            var callObj = callBuilder
+                .to(TestContractAddress)
+                .method('get_pixels')
+                .params({
+                    "index": index
+                })
+                .build();
+
+            var result = await iconService.call(callObj).execute();
+            console.log(result);
+
+            return result;
+        }
+
+        var isPop = false;
+
+        var HCnt = 10;
+        var VCnt = 10;
+        var TotalImgSize = 800;
+        var CurrentIndex = -1;
+
+        var NumPixel = 32;
+        var CanvasSize = 640;
+
+        var aBox;
+
+        var pixelSize = CanvasSize / NumPixel,
+            cursorOffset = pixelSize / 2,
+            cursorLineW = 2,
+            pixelColor = '#42b6bc',
+            drawPos = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var mouse = {};
+            var oldTime, delta;
+            var canvas = document.getElementsByTagName('canvas')[0];
+            var exportBtn = document.getElementById('export');
+            var loadImgBtn = document.getElementById('loadimg');
+            var ctx = canvas.getContext('2d');
+
+            canvas.width = CanvasSize;
+            canvas.height = CanvasSize;
+
+            function drawGrid() {
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.75)';
+                var x = 0,
+                    y = 0;
+                while (x <= canvas.width) {
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    x += pixelSize;
+                }
+                while (y <= canvas.height) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    y += pixelSize;
+                }
+                ctx.stroke();
+            }
+
+            function getMousePos(event) {
+                var rect = canvas.getBoundingClientRect();
+                return {
+                    x: (Math.round((event.clientX - rect.left - (pixelSize / 2)) / pixelSize) * pixelSize),
+                    y: (Math.round((event.clientY - rect.top - (pixelSize / 2)) / pixelSize) * pixelSize)
+                };
+            }
+
+            function clearCanvas() {
+                ctx.fillStyle = 'rgba(240, 240, 240, 0.3)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            function drawImage() {
+                var p = 0;
+                while (p < drawPos.length) {
+                    ctx.fillStyle = drawPos[p].color || pixelColor;
+                    ctx.fillRect(drawPos[p].x, drawPos[p].y, pixelSize, pixelSize);
+                    p++;
+                }
+            }
+
+            function drawMouse() {
+                ctx.fillStyle = 'rgba(128, 128, 255, 0.5)';
+                ctx.fillRect(mouse.x, mouse.y, pixelSize, cursorLineW);
+                ctx.fillRect(mouse.x, mouse.y, cursorLineW, pixelSize);
+
+                ctx.fillStyle = pixelColor;
+                ctx.fillRect(mouse.x + cursorLineW, mouse.y + cursorLineW, pixelSize - cursorOffset, pixelSize - cursorOffset);
+            }
+
+            function render() {
+                clearCanvas();
+                drawGrid();
+                drawImage();
+                drawMouse();
+                window.requestAnimationFrame(render);
+            }
+            window.requestAnimationFrame(render);
+
+            canvas.addEventListener('mousemove', recordMouseMovement);
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mouseup', stopDrawing);
+            window.addEventListener('mouseleave', stopDrawing);
+            canvas.addEventListener('contextmenu', clearPixel);
+
+            exportBtn.addEventListener('mouseup', function(event) {
+                exportImage();
+            });
+
+            function recordMouseMovement(event) {
+                mouse = getMousePos(event);
+            }
+
+            function startDrawing(event) {
+                if (event.button == 0) {
+                    mark = setInterval(function() {
+                        var pos = mouse;
+                        if (drawPos.length > 1 && drawPos.slice(-1)[0].x == pos.x && drawPos.slice(-1)[0].y == pos.y) {} else {
+                            pos['color'] = pixelColor;
+                            drawPos.push(pos);
+                        }
+                    }, 10);
+                }
+            }
+
+            function stopDrawing(event) {
+                clearInterval(mark);
+            }
+
+            function clearPixel(event) {
+                event.preventDefault();
+                var savedPos = drawPos.filter(function(savedPos) {
+                    return !(savedPos.x == mouse.x && savedPos.y == mouse.y);
+                });
+                drawPos = savedPos;
+                return false;
+            }
+        });
+
+
+        function colourNameToHex(colour) {
+            var colours = {
+                "aliceblue": "#f0f8ff",
+                "antiquewhite": "#faebd7",
+                "aqua": "#00ffff",
+                "aquamarine": "#7fffd4",
+                "azure": "#f0ffff",
+                "beige": "#f5f5dc",
+                "bisque": "#ffe4c4",
+                "black": "#000000",
+                "blanchedalmond": "#ffebcd",
+                "blue": "#0000ff",
+                "blueviolet": "#8a2be2",
+                "brown": "#a52a2a",
+                "burlywood": "#deb887",
+                "cadetblue": "#5f9ea0",
+                "chartreuse": "#7fff00",
+                "chocolate": "#d2691e",
+                "coral": "#ff7f50",
+                "cornflowerblue": "#6495ed",
+                "cornsilk": "#fff8dc",
+                "crimson": "#dc143c",
+                "cyan": "#00ffff",
+                "darkblue": "#00008b",
+                "darkcyan": "#008b8b",
+                "darkgoldenrod": "#b8860b",
+                "darkgray": "#a9a9a9",
+                "darkgreen": "#006400",
+                "darkkhaki": "#bdb76b",
+                "darkmagenta": "#8b008b",
+                "darkolivegreen": "#556b2f",
+                "darkorange": "#ff8c00",
+                "darkorchid": "#9932cc",
+                "darkred": "#8b0000",
+                "darksalmon": "#e9967a",
+                "darkseagreen": "#8fbc8f",
+                "darkslateblue": "#483d8b",
+                "darkslategray": "#2f4f4f",
+                "darkturquoise": "#00ced1",
+                "darkviolet": "#9400d3",
+                "deeppink": "#ff1493",
+                "deepskyblue": "#00bfff",
+                "dimgray": "#696969",
+                "dodgerblue": "#1e90ff",
+                "firebrick": "#b22222",
+                "floralwhite": "#fffaf0",
+                "forestgreen": "#228b22",
+                "fuchsia": "#ff00ff",
+                "gainsboro": "#dcdcdc",
+                "ghostwhite": "#f8f8ff",
+                "gold": "#ffd700",
+                "goldenrod": "#daa520",
+                "gray": "#808080",
+                "green": "#008000",
+                "greenyellow": "#adff2f",
+                "honeydew": "#f0fff0",
+                "hotpink": "#ff69b4",
+                "indianred ": "#cd5c5c",
+                "indigo": "#4b0082",
+                "ivory": "#fffff0",
+                "khaki": "#f0e68c",
+                "lavender": "#e6e6fa",
+                "lavenderblush": "#fff0f5",
+                "lawngreen": "#7cfc00",
+                "lemonchiffon": "#fffacd",
+                "lightblue": "#add8e6",
+                "lightcoral": "#f08080",
+                "lightcyan": "#e0ffff",
+                "lightgoldenrodyellow": "#fafad2",
+                "lightgrey": "#d3d3d3",
+                "lightgreen": "#90ee90",
+                "lightpink": "#ffb6c1",
+                "lightsalmon": "#ffa07a",
+                "lightseagreen": "#20b2aa",
+                "lightskyblue": "#87cefa",
+                "lightslategray": "#778899",
+                "lightsteelblue": "#b0c4de",
+                "lightyellow": "#ffffe0",
+                "lime": "#00ff00",
+                "limegreen": "#32cd32",
+                "linen": "#faf0e6",
+                "magenta": "#ff00ff",
+                "maroon": "#800000",
+                "mediumaquamarine": "#66cdaa",
+                "mediumblue": "#0000cd",
+                "mediumorchid": "#ba55d3",
+                "mediumpurple": "#9370d8",
+                "mediumseagreen": "#3cb371",
+                "mediumslateblue": "#7b68ee",
+                "mediumspringgreen": "#00fa9a",
+                "mediumturquoise": "#48d1cc",
+                "mediumvioletred": "#c71585",
+                "midnightblue": "#191970",
+                "mintcream": "#f5fffa",
+                "mistyrose": "#ffe4e1",
+                "moccasin": "#ffe4b5",
+                "navajowhite": "#ffdead",
+                "navy": "#000080",
+                "oldlace": "#fdf5e6",
+                "olive": "#808000",
+                "olivedrab": "#6b8e23",
+                "orange": "#ffa500",
+                "orangered": "#ff4500",
+                "orchid": "#da70d6",
+                "palegoldenrod": "#eee8aa",
+                "palegreen": "#98fb98",
+                "paleturquoise": "#afeeee",
+                "palevioletred": "#d87093",
+                "papayawhip": "#ffefd5",
+                "peachpuff": "#ffdab9",
+                "peru": "#cd853f",
+                "pink": "#ffc0cb",
+                "plum": "#dda0dd",
+                "powderblue": "#b0e0e6",
+                "purple": "#800080",
+                "rebeccapurple": "#663399",
+                "red": "#ff0000",
+                "rosybrown": "#bc8f8f",
+                "royalblue": "#4169e1",
+                "saddlebrown": "#8b4513",
+                "salmon": "#fa8072",
+                "sandybrown": "#f4a460",
+                "seagreen": "#2e8b57",
+                "seashell": "#fff5ee",
+                "sienna": "#a0522d",
+                "silver": "#c0c0c0",
+                "skyblue": "#87ceeb",
+                "slateblue": "#6a5acd",
+                "slategray": "#708090",
+                "snow": "#fffafa",
+                "springgreen": "#00ff7f",
+                "steelblue": "#4682b4",
+                "tan": "#d2b48c",
+                "teal": "#008080",
+                "thistle": "#d8bfd8",
+                "tomato": "#ff6347",
+                "turquoise": "#40e0d0",
+                "violet": "#ee82ee",
+                "wheat": "#f5deb3",
+                "white": "#ffffff",
+                "whitesmoke": "#f5f5f5",
+                "yellow": "#ffff00",
+                "yellowgreen": "#9acd32"
+            };
+
+            if (typeof colours[colour.toLowerCase()] != 'undefined')
+                return colours[colour.toLowerCase()];
+
+            return colour;
+        }
+
+        function VBColorToHEX(i) {
+            var bbggrr = ("000000" + i.toString(16)).slice(-6);
+            var rrggbb = bbggrr.substr(4, 2) + bbggrr.substr(2, 2) + bbggrr.substr(0, 2);
+            return "#" + rrggbb;
+        }
+
+        function HEXToVBColor(rrggbb) {
+            var bbggrr = rrggbb.substr(4, 2) + rrggbb.substr(2, 2) + rrggbb.substr(0, 2);
+            return parseInt(bbggrr, 16);
+        }
+
+        function exportImage() {
+            var uniquePos = [];
+            var flag = false;
+            for (var i = 0; i < drawPos.length; i++) {
+                flag = false;
+                for (var j = 0; j < uniquePos.length; j++) {
+                    if (drawPos[i].x == uniquePos[j].x && drawPos[i].y == uniquePos[j].y && drawPos[i].color == uniquePos[j].color) {
+                        flag = true;
+                    }
+                }
+
+                if (flag == false) {
+                    uniquePos.push(drawPos[i]);
+                }
+            }
+
+            var exportPos = Array();
+            for (var i = 0; i < NumPixel; i++) {
+                exportPos.push(Array());
+            }
+
+            for (var i = 0; i < NumPixel; i++) {
+                for (var j = 0; j < NumPixel; j++) {
+                    flag = false;
+                    for (var k = 0; k < uniquePos.length; k++) {
+                        if (i == (uniquePos[k].x + pixelSize) / pixelSize - 1 && j == (uniquePos[k].y + pixelSize) / pixelSize - 1) {
+                            var color = uniquePos[k].color;
+                            var hexcolor = colourNameToHex(color);
+                            // color to int
+                            //exportPos[i][j] = HEXToVBColor(hexcolor.substring(1, hexcolor.length));
+                            //                    console.log(uniquePos[k].color);
+                            exportPos[i][j] = hexcolor;
+                            flag = true;
+                        }
+                    }
+                    if (flag == false) {
+                        hexcolor = '#ffffff';
+                        exportPos[i][j] = hexcolor;
+                    }
+                }
+            }
+
+            var p = new PNGlib(NumPixel * 10, NumPixel * 10, 256);
+
+            var HexColor, R, G, B, aColor;
+            for (var i = 0; i < NumPixel; i++) {
+                for (var j = 0; j < NumPixel; j++) {
+                    HexColor = exportPos[i][j];
+                    R = parseInt(HexColor.substring(1, 3), 16);
+                    G = parseInt(HexColor.substring(3, 5), 16);
+                    B = parseInt(HexColor.substring(5, 7), 16);
+                    aColor = p.color(R, G, B);
+                    for (var ii = 0; ii < 10; ii++) {
+                        for (var jj = 0; jj < 10; jj++) {
+                            p.buffer[p.index(i * 10 + ii, j * 10 + jj)] = aColor;
+                        }
+                    }
+                }
+            }
+
+
+            var NewImg = document.getElementById('NewImg');
+            NewImg.setAttribute("src", 'data:image/png;base64,' + p.getBase64());
+
+            var resp = '';
+            for (var i = 0; i < NumPixel; i++) {
+                for (var j = 0; j < NumPixel; j++) {
+                    var PosColor = exportPos[i][j];
+                    resp = resp + PosColor.substring(1, 7);
+                    if (j != NumPixel - 1) {
+                        resp = resp + ",";
+                    }
+                }
+                resp = resp + ",";
+            }
+            resp = resp.substring(0, resp.length - 1);
+            document.getElementById('data').innerHTML = resp;
+
+            $('#light').bPopup().close();
+            $('#SubmitFloatWindow').bPopup({
+                follow: [false, false],
+                easing: 'easeOutBack',
+                transition: 'slideUp',
+                transitionClose: 'slideDown'
+            });
+            $('#SubmitFloatWindow').position({
+                of: $("#imglist"),
+                my: 'center',
+                at: 'center'
+            });
+        }
+
+        function ImageExist(url) {
+            var img = new Image();
+            img.src = url;
+            return img.height != 0;
+        }
+
+        async function ImgClick(index) {
+            //    console.log(e.offsetX, e.offsetY);
+
+            //    var aSize = TotalImgSize/HCnt;
+
+            //    var imgX = e.offsetX;
+            //    var imgY = e.offsetY;
+
+            //    var XPos = Math.floor(imgX/aSize);
+            //    var YPos = Math.floor(imgY/aSize);
+
+            //    CurrentIndex = HCnt*YPos+XPos;
+            //    price = await GetPrice(CurrentIndex);
+            CurrentIndex = index;
+            var price = await GetPrice(CurrentIndex);
+            console.log(price);
+            //    price = price.split("'").join("\"");
+            //    price = JSON.parse(price);
+            pricePer = parseInt(price, 16);
+            totalDay = 1;
+            $('#icxPerDay1').html(pricePer);
+            $('#icxPerDay2').html(pricePer);
+            $('#icxPerDay3').html(pricePer);
+            $('#BidPerDay').val(pricePer);
+            $('#TotalDay').val(totalDay);
+            $('#icxTotalDay1').html(totalDay);
+            $('#icxTotalDay2').html(totalDay);
+            $('#icxTotalDay3').html(totalDay);
+            $('#light').bPopup({
+                follow: [false, false],
+                easing: 'easeOutBack',
+                transition: 'slideUp',
+                transitionClose: 'slideDown'
+            });
+            $('#light').position({
+                of: $("#totalImg"),
+                my: 'center',
+                at: 'center'
+            });
+            reCalcBid();
+        }
+
+        function loadImg() {
+            var Center = document.createElement('center');
+            var TotalImg = document.createElement('img');
+            TotalImg.setAttribute('src', 'output.png?' + new Date().getTime());
+            TotalImg.setAttribute('id', 'totalImg');
+            TotalImg.setAttribute('width', TotalImgSize);
+            Center.append(TotalImg);
+            $("#imglist").append(Center);
+            /*
+            var defaultimg = './default.png';
+            var Hcnt = 16;
+            var Vcnt = 10;
+            var center = document.createElement('center');
+            var table = document.createElement('table');
+            table.setAttribute('id', 'imgtable');
+            for(var i=0 ; i<Vcnt ; i++) {
+                var tr = document.createElement('tr');
+                tr.setAttribute('id', 'Hline'+i);
+                for(var j=0 ; j<Hcnt ; j++) {
+                    var td = document.createElement('td');
+                    td.setAttribute('id', 'Vline'+j);
+
+                    var img = document.createElement('img');
+                    var index = (i*Hcnt+j);
+                    img.setAttribute('id', 'i'+index);
+                    var src = './img ('+index+').png';
+                    if(ImageExist(src)){
+                        img.setAttribute('src', src+'?rnd='+Math.random());
+                    } else {
+                        img.setAttribute('src', defaultimg);
+                    }
+                    img.setAttribute('width', '64');
+                    img.setAttribute('class', 'buyPixel layload');
+
+                    td.append(img);
+
+                    tr.append(td);
+                }
+                table.append(tr);
+            }
+            center.append(table);
+            $("#imglist").append(center);
+            */
+        }
+
+        function convert(string) {
+            string = escape(string);
+            string = string.split(/%/).filter(e => e);
+            string = string.map(e => +("0x" + e));
+            return +string.join("");
+        }
+
+
+        function reCalcBid() {
+            var vbidPerDay = $('#BidPerDay').val();
+            var vtotalDay = $('#TotalDay').val();
+            $('#TotalBid').html(vbidPerDay * vtotalDay);
+        }
+
+
+        $(document).ready(function() {
+            loadImg();
+            //    $('#totalImg').click(ImgClick);
+            $('#color').css('background', '#' + $('#color').val());
+
+            $('#clear').click(function() {
+                drawPos = [];
+            });
+
+            var icon_address = localStorage.getItem('ICON_ADDRESS')
+            if (icon_address != null) {
+                fromAddress = icon_address;
+                $('#ConnectWallet').hide();
+            }
+
+            $('#loadFile').change(function() {
+                var img = new Image();
+                img.onload = draw;
+                img.src = URL.createObjectURL(this.files[0]);
+            });
+
+            function componentToHex(c) {
+                var hex = c.toString(16);
+                return hex.length == 1 ? "0" + hex : hex;
+            }
+
+            function rgbToHex(r, g, b) {
+                return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+            }
+
+            function draw() {
+                var tmpCanvas = document.createElement('canvas');
+                tmpCanvas.width = 32;
+                tmpCanvas.height = 32;
+                var ctx = tmpCanvas.getContext('2d');
+                ctx.drawImage(this, 0, 0, 32, 32);
+
+                var pixelData = tmpCanvas.getContext('2d').getImageData(0, 0, 32, 32).data;
+                for (var i = 0; i < 32; i++) {
+                    for (var j = 0; j < 32; j++) {
+                        cnt = i * 32 + j;
+
+                        aPixel = {
+                            x: 0,
+                            y: 0,
+                            color: ""
+                        };
+                        aPixel.y = i * pixelSize;
+                        aPixel.x = j * pixelSize;
+                        R = pixelData[cnt * 4];
+                        G = pixelData[cnt * 4 + 1];
+                        B = pixelData[cnt * 4 + 2];
+                        aPixel.color = rgbToHex(R, G, B);
+
+                        drawPos.push(aPixel);
+                    }
+                }
+            }
+
+            $('.black_overlay').click(function(e) {
+                $('#light').bPopup().close();
+            });
+
+            $('#push2blockchain').click(async function() {
+                //        price = await GetPrice(CurrentIndex);
+                //        price = price.split("'").join("\"");
+                //        price = JSON.parse(price);
+                perDay = $('#BidPerDay').val();
+                untilDay = $('#TotalDay').val();
+                amount = perDay * untilDay;
+                pixelData = $('#data')[0].innerText;
+
+                /*        if(perDay <= price.pricePer) {
+                            alert('You Have to Bid Higher than '+ price.pricePer);
+                        } else if(untilDay <= price.totalDay) {
+                            alert('You Have to Pay More than '+ price.TotalDay+ ' days')
+                        } else {
+                */
+                TxHash = await BidBlock(amount, CurrentIndex, pixelData);
+                console.log('TxHash:', TxHash);
+                //        }
+            });
+
+            $('#RemakeAllImg').click(function() {
+                $.ajax({
+                    url: 'RemakeAllImg',
+                    async: false
+                });
+                $('#totalImg').attr('src', 'output.png?' + new Date().getTime());
+            })
+
+            $('#BidPerDay').change(function() {
+                reCalcBid();
+            });
+
+            $('#TotalDay').change(function() {
+                reCalcBid();
+            });
+
+            const pickr = Pickr.create({
+                el: '.color-picker',
+                default: '42b6bc',
+                theme: 'nano',
+
+                swatches: [
+                    'rgba(244, 67, 54, 1)',
+                    'rgba(233, 30, 99, 0.95)',
+                    'rgba(156, 39, 176, 0.9)',
+                    'rgba(103, 58, 183, 0.85)',
+                    'rgba(63, 81, 181, 0.8)',
+                    'rgba(33, 150, 243, 0.75)',
+                    'rgba(3, 169, 244, 0.7)',
+                    'rgba(0, 188, 212, 0.7)',
+                    'rgba(0, 150, 136, 0.75)',
+                    'rgba(76, 175, 80, 0.8)',
+                    'rgba(139, 195, 74, 0.85)',
+                    'rgba(205, 220, 57, 0.9)',
+                    'rgba(255, 235, 59, 0.95)',
+                    'rgba(255, 193, 7, 1)'
+                ],
+
+                components: {
+                    // Main components
+                    preview: true,
+                    opacity: true,
+                    hue: true,
+                }
+            });
+
+            pickr.on('change', (...args) => {
+                var rgb = args[0].toHEXA();
+                var hexa = rgb[0] + rgb[1] + rgb[2];
+                $('#color').val(hexa);
+                $('#color').css('background', '#' + hexa);
+                pixelColor = '#' + hexa;
+            }).on('swatchselect', (...args) => {
+                var rgb = args[0].toHEXA();
+                var hexa = rgb[0] + rgb[1] + rgb[2];
+                $('#color').val(hexa);
+                $('#color').css('background', '#' + hexa);
+                pixelColor = '#' + hexa;
+            });
+
+            var aText = document.createElement("font");
+            aText.setAttribute('id', 'BoxText');
+            aBox = document.createElement("div");
+            aBox.setAttribute('id', 'Box');
+            document.body.appendChild(aBox);
+
+            $('#Box').click(function() {
+                var index = $(this).attr('value');
+
+                $('.mask').hide();
+
+                ImgClick(index);
+            });
+
+            $('#totalImg').mousemove(MoveBox);
+
+            $('#top').mousemove(MoveBox);
+            $('#left').mousemove(MoveBox);
+            $('#right').mousemove(MoveBox);
+            $('#bottom').mousemove(MoveBox);
+        });
+
+        function MoveBox(e) {
+            var xy = $('#totalImg').position();
+
+            if (e.pageX < xy.left || e.pageY < xy.top || e.pageX > xy.left + $('#totalImg').width() || e.pageY > xy.top + $('#totalImg').height()) {
+                $('#Box').hide();
+                $('.mask').hide();
+                return;
+            }
+
+            var BoxWidth = $('#totalImg').width() / HCnt;
+            var BoxHeight = $('#totalImg').height() / VCnt;
+
+            var BoxX = parseInt((e.pageX - xy.left) / BoxWidth);
+            var BoxY = parseInt((e.pageY - xy.top) / BoxHeight);
+
+            aBox.setAttribute('style', 'position:absolute;width:' + BoxWidth + ';height:' + BoxHeight + ';top:' + (xy.top + (BoxY * BoxHeight) - 2) + ';left:' + (xy.left + (BoxX * BoxWidth) - 2) + ';' +
+                'margin:0px;border:3px ridge #ff00ff;z-index:3000;');
+
+            wrapWindowByMask((xy.left + (BoxX * BoxWidth)) - 2, (xy.left + (BoxX * BoxWidth)) + BoxWidth + 4, (xy.top + (BoxY * BoxHeight)) - 2, (xy.top + (BoxY * BoxHeight)) + BoxHeight + 4, BoxY * HCnt + BoxX);
+        }
+
+        async function wrapWindowByMask(left, right, top, bottom, index) {
+            var maskHeight = $(document).height();
+            var maskWidth = $(window).width();
+
+            $('#top').css({
+                'left': 0,
+                'top': 0,
+                'width': maskWidth,
+                'height': top
+            });
+            $('#left').css({
+                'left': 0,
+                'top': top,
+                'width': left,
+                'height': bottom - top
+            });
+            $('#right').css({
+                'left': right,
+                'top': top,
+                'width': maskWidth - right,
+                'height': bottom - top
+            });
+            $('#bottom').css({
+                'left': 0,
+                'top': bottom,
+                'width': maskWidth,
+                'height': maskHeight - bottom
+            });
+            $('.mask').show();
+
+            $('#Box').show();
+            $('#Box').attr('value', index);
+
+            var result = await GetPrice(index);
+            var price = parseInt(result.price);
+            tippy('#Box', {
+                content: "price:" + price,
+                animation: 'scale with inertia',
+                arrow: true,
+                theme: 'light'
+            });
+        }
+
+        function readimg() {
+            var canvas = $('#canvas')[0];
+            var ctx = canvas.getContext('2d');
+            var img = new Image();
+
+            img.onload = function() {
+                canvas.height = canvas.width * (img.height / img.width);
+            }
+        }
+    </script>
+
+    <div id="light" class="white_content">
+        <center>
+            <H4>This Block Price is
+                <font id='icxPerDay1' color='red'>1</font> ICX per Day, Total
+                <font id='icxTotalDay1' color='red'>7</font> Days</H4>
+            <H4>You Have to bid more than
+                <font id='icxPerDay2' color='red'>1</font> ICX per day, Equal or more than
+                <font id='icxTotalDay2' color='red'>7</font> Days</H4>
+        </center>
+        <canvas></canvas>
+        <div id='export-wrap'>
+            <div><input id='color' type='text' value='42b6bc' /></div>
+            <div class='color-picker'></div>
+            <input id='loadFile' onchange='readimg()' type='file' />
+            <button class='ui-button ui-widget ui-corner-all' id='clear'>Clear</button>
+            <button class='ui-button ui-widget ui-corner-all' id='export'>Submit to ICON</button>
+        </div>
+    </div>
+    <div id="top" class="mask"></div>
+    <div id="left" class="mask"></div>
+    <div id="right" class="mask"></div>
+    <div id="bottom" class="mask"></div>
+
+    <center>
+        <button class='ui-button ui-widget ui-corner-all' id='ConnectWallet' onclick="ConnectICONEX()">Connect Icon Wallet</button>
+        <button id="RemakeAllImg" class='ui-button ui-widget ui-corner-all'>RemakeAllImg</button>
+    </center>
+    <br/>
+    <H1 align="center">
+        <font color="#42b6bc">ICON PIXEL BOARD</font>
+    </H1>
+    <br/>
+    <div id='imglist'></div>
+    <br/>
+    <div id='SubmitFloatWindow'>
+        <center>
+            <br/>
+            <img id="NewImg" />
+            <input type='hidden' id='data' rows='1' cols=25></input>
+            <br/>
+            <H4>You Have to bid more than
+                <font id='icxPerDay3' color='red'>1</font> ICX per day, Equal or more than
+                <font id='icxTotalDay3' color='red'>7</font> Days</H4>
+            <H3><input id='BidPerDay' type='number' value='1' step='0.1' style='width:3em' /> ICX per Day, Total <input id='TotalDay' type='number' value='7' style='width:3em' /> Days</H3>
+            <H3>Total
+                <font id='TotalBid' color='red'>7</font> ICX</H3>
+            <button class='ui-button ui-widget ui-corner-all' id='push2blockchain'>Bid 4 my Block</button>
+        </center>
+    </div>
+    <canvas id="canvas"></canvas>
+</body>
+
+</html>
